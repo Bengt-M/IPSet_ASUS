@@ -158,22 +158,22 @@ Unload_IPTables () {
 }
 
 Load_IPTables () {
-		iptables -t raw -I PREROUTING -i "$iface" -m set --match-set Skynet src -j DROP >/dev/null 2>&1
-		iptables -t raw -I PREROUTING -i "$iface" -m set --match-set Whitelist src -j ACCEPT >/dev/null 2>&1
-		iptables -t raw -I PREROUTING -i br0 -m set --match-set Skynet dst -j DROP >/dev/null 2>&1
-		iptables -t raw -I PREROUTING -i br0 -m set --match-set Whitelist dst -j ACCEPT >/dev/null 2>&1
+		#iptables -t raw -I PREROUTING -i "$iface" -m set --match-set Skynet src -j DROP >/dev/null 2>&1
+		#iptables -t raw -I PREROUTING -i "$iface" -m set --match-set Whitelist src -j ACCEPT >/dev/null 2>&1
+		#iptables -t raw -I PREROUTING -i br0 -m set --match-set Skynet dst -j DROP >/dev/null 2>&1
+		#iptables -t raw -I PREROUTING -i br0 -m set --match-set Whitelist dst -j ACCEPT >/dev/null 2>&1
 		if echo "$@" | grep -qF "noautoban"; then
 			logger -st Skynet "[INFO] Enabling No-Autoban Mode..."
 		else
-			iptables -I logdrop -i "$iface" -m state --state INVALID -j SET --add-set Skynet src >/dev/null 2>&1
-			iptables -I logdrop -i "$iface" -m state --state INVALID -j LOG --log-prefix "[BLOCKED - NEW BAN] " --log-tcp-sequence --log-tcp-options --log-ip-options >/dev/null 2>&1
-			iptables -I logdrop -p tcp --tcp-flags ALL RST,ACK -j ACCEPT >/dev/null 2>&1
-			iptables -I logdrop -p tcp --tcp-flags ALL RST -j ACCEPT >/dev/null 2>&1
-			iptables -I logdrop -p tcp --tcp-flags ALL FIN,ACK -j ACCEPT >/dev/null 2>&1
-			iptables -I logdrop -p tcp --tcp-flags ALL ACK,PSH,FIN -j ACCEPT >/dev/null 2>&1
-			iptables -I logdrop -p icmp --icmp-type 3 -j DROP >/dev/null 2>&1
-			iptables -I logdrop -p icmp --icmp-type 11 -j DROP >/dev/null 2>&1
-			iptables -I logdrop -i "$iface" -p tcp -m multiport --sports 80,443,143,993,110,995,25,465 -m state --state INVALID -j DROP >/dev/null 2>&1
+		#	iptables -I logdrop -i "$iface" -m state --state INVALID -j SET --add-set Skynet src >/dev/null 2>&1
+		#	iptables -I logdrop -i "$iface" -m state --state INVALID -j LOG --log-prefix "[BLOCKED - NEW BAN] " --log-tcp-sequence --log-tcp-options --log-ip-options >/dev/null 2>&1
+		#	iptables -I logdrop -p tcp --tcp-flags ALL RST,ACK -j ACCEPT >/dev/null 2>&1
+		#	iptables -I logdrop -p tcp --tcp-flags ALL RST -j ACCEPT >/dev/null 2>&1
+		#	iptables -I logdrop -p tcp --tcp-flags ALL FIN,ACK -j ACCEPT >/dev/null 2>&1
+		#	iptables -I logdrop -p tcp --tcp-flags ALL ACK,PSH,FIN -j ACCEPT >/dev/null 2>&1
+		#	iptables -I logdrop -p icmp --icmp-type 3 -j DROP >/dev/null 2>&1
+		#	iptables -I logdrop -p icmp --icmp-type 11 -j DROP >/dev/null 2>&1
+		#	iptables -I logdrop -i "$iface" -p tcp -m multiport --sports 80,443,143,993,110,995,25,465 -m state --state INVALID -j DROP >/dev/null 2>&1
 			iptables -I logdrop -i "$iface" -m set --match-set Whitelist src -j ACCEPT >/dev/null 2>&1
 		fi
 		if [ "$(nvram get sshd_enable)" = "1" ] && [ "$(nvram get sshd_bfp)" = "1" ]; then
@@ -181,6 +181,26 @@ Load_IPTables () {
 			iptables -I SSHBFP "$pos3" -m recent --update --seconds 60 --hitcount 4 --name SSH --rsource -j SET --add-set Skynet src >/dev/null 2>&1
 			iptables -I SSHBFP "$pos3" -m recent --update --seconds 60 --hitcount 4 --name SSH --rsource -j LOG --log-prefix "[BLOCKED - NEW BAN] " --log-tcp-sequence --log-tcp-options --log-ip-options >/dev/null 2>&1
 		fi
+		
+		RULENO=$(iptables -nvL INPUT --line | grep "INPUT_ICMP" | awk '{print $1}')
+		RULENO=$(($RULENO+1))
+		iptables -N Skynet
+		iptables -I INPUT $RULENO -j Skynet 
+		iptables -I FORWARD 2 -j Skynet 
+		iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+		iptables -D INPUT -i eth0 -p tcp -m tcp --dport 22 -m state --state NEW -j SSHBFP
+		iptables -D INPUT -m state --state INVALID -j logdrop
+		iptables -A Skynet -p tcp -m tcp --dport  22 -m state --state NEW -m set --match-set Whitelist src -j SSHBFP
+		iptables -A Skynet -p tcp -m tcp --dport 443 -m state --state NEW -m set --match-set Whitelist src -j SSHBFP
+		iptables -A Skynet -i br0  -m state --state NEW -m set --match-set Skynet dst -j LOG --log-prefix "[BLOCKED - OUTBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options
+		iptables -A Skynet -i br0 -m set --match-set Skynet dst -j DROP
+		iptables -A Skynet -i eth0 -m set --match-set Skynet src -j LOG --log-prefix "[BLOCKED - INBOUND] " --log-tcp-sequence --log-tcp-options --log-ip-options
+		iptables -A Skynet -i eth0 -m set --match-set Skynet src -j DROP
+		iptables -A Skynet -i eth0 -m recent --set --name SSH --rsource
+		iptables -A Skynet -i eth0 -m recent --update --seconds 300 --hitcount 2 --name SSH --rsource -j LOG --log-prefix "[BLOCKED - NEW BAN] " --log-tcp-sequence --log-tcp-options --log-ip-options
+		iptables -A Skynet -i eth0 -m recent --update --seconds 300 --hitcount 2 --name SSH --rsource -j SET --add-set Skynet src
+		iptables -A Skynet -i eth0 -m recent --update --seconds 300 --hitcount 2 --name SSH --rsource -j DROP
+				
 }
 
 Unload_DebugIPTables () {
