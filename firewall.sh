@@ -171,8 +171,8 @@ Load_IPTables () {
 			iptables -I logdrop -p tcp --tcp-flags ALL RST -j ACCEPT >/dev/null 2>&1
 			iptables -I logdrop -p tcp --tcp-flags ALL FIN,ACK -j ACCEPT >/dev/null 2>&1
 			iptables -I logdrop -p tcp --tcp-flags ALL ACK,PSH,FIN -j ACCEPT >/dev/null 2>&1
-			iptables -I logdrop -p icmp --icmp-type 3 -j ACCEPT >/dev/null 2>&1
-			iptables -I logdrop -p icmp --icmp-type 11 -j ACCEPT >/dev/null 2>&1
+			iptables -I logdrop -p icmp --icmp-type 3 -j DROP >/dev/null 2>&1
+			iptables -I logdrop -p icmp --icmp-type 11 -j DROP >/dev/null 2>&1
 			iptables -I logdrop -i "$iface" -p tcp -m multiport --sports 80,443,143,993,110,995,25,465 -m state --state INVALID -j DROP >/dev/null 2>&1
 			iptables -I logdrop -i "$iface" -m set --match-set Whitelist src -j ACCEPT >/dev/null 2>&1
 		fi
